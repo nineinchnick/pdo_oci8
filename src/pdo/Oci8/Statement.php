@@ -587,11 +587,9 @@ class Statement extends PDOStatement
 
     /**
      * Returns metadata for a column in a result set
-     *
      * The array returned by this function is patterned after that
-     * returned by PDO::getColumnMeta(). It includes the following
+     * returned by \PDO::getColumnMeta(). It includes the following
      * elements:
-     *
      *     native_type
      *     driver:decl_type
      *     flags
@@ -601,8 +599,9 @@ class Statement extends PDOStatement
      *     precision
      *     pdo_type
      *
-     * @param int $column Zero-based column index
-     * @return array
+     * @param int $column The 0-indexed column in the result set.
+     * @return array An associative array containing the above metadata values
+     *                    for a single column.
      */
     public function getColumnMeta($column)
     {
@@ -620,6 +619,7 @@ class Statement extends PDOStatement
         $meta['len']              = oci_field_size($this->sth, $column);
         $meta['precision']        = oci_field_precision($this->sth, $column);
         $meta['pdo_type']         = null;
+        $meta['is_null']          = oci_field_is_null($this->sth, $column);
 
         return $meta;
     }
