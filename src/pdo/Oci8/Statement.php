@@ -136,12 +136,15 @@ class Statement extends PDOStatement
         }
 
         if ($fetch_style === PDO::FETCH_ASSOC || $fetch_style === PDO::FETCH_BOTH) {
-            $result = oci_fetch_array($this->sth, $fetch_style === PDO::FETCH_BOTH ? OCI_BOTH : OCI_ASSOC);
+            $result = oci_fetch_array(
+                $this->sth,
+                ($fetch_style === PDO::FETCH_BOTH ? OCI_BOTH : OCI_ASSOC) + OCI_RETURN_NULLS
+            );
             if ($result !== false && ($case = $this->pdoOci8->getAttribute(PDO::ATTR_CASE)) != PDO::CASE_NATURAL) {
                 $result = array_change_key_case($result, $case == PDO::CASE_LOWER ? CASE_LOWER : CASE_UPPER);
             }
         } elseif ($fetch_style === PDO::FETCH_NUM) {
-            $result = oci_fetch_array($this->sth, OCI_NUM);
+            $result = oci_fetch_array($this->sth, OCI_NUM + OCI_RETURN_NULLS);
         } elseif ($fetch_style === PDO::FETCH_BOUND) {
             throw new PDOException('PDO::FETCH_BOUND is not implemented for Oci8PDO_Statement::fetch()');
         } elseif ($fetch_style === PDO::FETCH_CLASS) {
@@ -267,7 +270,7 @@ class Statement extends PDOStatement
      */
     public function fetchColumn($colNumber = 0)
     {
-        $result = oci_fetch_array($this->sth, OCI_NUM);
+        $result = oci_fetch_array($this->sth, OCI_NUM + OCI_RETURN_NULLS);
 
         if ($result === false || !isset($result[$colNumber])) {
             return false;
@@ -290,7 +293,7 @@ class Statement extends PDOStatement
         }
 
         if ($fetch_style === PDO::FETCH_ASSOC || $fetch_style === PDO::FETCH_BOTH) {
-            oci_fetch_all($this->sth, $result, 0, -1, OCI_FETCHSTATEMENT_BY_ROW + OCI_ASSOC);
+            oci_fetch_all($this->sth, $result, 0, -1, OCI_FETCHSTATEMENT_BY_ROW + OCI_ASSOC + OCI_RETURN_NULLS);
             if (($case = $this->pdoOci8->getAttribute(PDO::ATTR_CASE)) != PDO::CASE_NATURAL) {
                 $result = array_map(function ($row) use ($case) {
                     return array_change_key_case($row, $case == PDO::CASE_LOWER ? CASE_LOWER : CASE_UPPER);
@@ -300,9 +303,9 @@ class Statement extends PDOStatement
                 $result = array_merge($result, array_values($result));
             }
         } elseif ($fetch_style === PDO::FETCH_NUM) {
-            oci_fetch_all($this->sth, $result, 0, -1, OCI_FETCHSTATEMENT_BY_ROW + OCI_NUM);
+            oci_fetch_all($this->sth, $result, 0, -1, OCI_FETCHSTATEMENT_BY_ROW + OCI_NUM + OCI_RETURN_NULLS);
         } elseif ($fetch_style === PDO::FETCH_COLUMN) {
-            oci_fetch_all($this->sth, $preResult, 0, -1, OCI_FETCHSTATEMENT_BY_COLUMN + OCI_NUM);
+            oci_fetch_all($this->sth, $preResult, 0, -1, OCI_FETCHSTATEMENT_BY_COLUMN + OCI_NUM + OCI_RETURN_NULLS);
             $result = [];
             foreach ($preResult as $row) {
                 $result[] = $row[0];
@@ -337,17 +340,14 @@ class Statement extends PDOStatement
     public function fetchObject($className = 'stdClass', $ctor_args = null)
     {
         if ($className == 'stdClass') {
-            $result = oci_fetch_object($this->sth);
-        } else {
-            $object     = new $className($ctor_args);
-            $object_oci = oci_fetch_object($this->sth);
-            foreach ($object_oci as $k => $v) {
-                $object->$k = $v;
-            }
-            $result = $object;
+            return oci_fetch_object($this->sth);
         }
-
-        return $result;
+        $object     = new $className($ctor_args);
+        $object_oci = oci_fetch_object($this->sth);
+        foreach ($object_oci as $k => $v) {
+            $object->$k = $v;
+        }
+        return $object;
     }
 
     /**
