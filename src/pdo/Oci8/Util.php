@@ -2,18 +2,20 @@
 /**
  * PDO Userspace Driver for Oracle (oci8)
  *
- * @category Database
- * @package Pdo
+ * @category   Database
+ * @package    Pdo
  * @subpackage Oci8
- * @author Ben Ramsey <ramsey@php.net>
- * @copyright Copyright (c) 2009 Ben Ramsey (http://benramsey.com/)
- * @license http://open.benramsey.com/license/mit  MIT License
+ * @author     Ben Ramsey <ramsey@php.net>
+ * @copyright  Copyright (c) 2009 Ben Ramsey (http://benramsey.com/)
+ * @license    http://open.benramsey.com/license/mit  MIT License
  */
+
+namespace nineinchnick\pdo\Oci8;
 
 /**
  * A static utility class for PDO userspace classes
  */
-class Pdo_Util
+class Util
 {
     /**
      * Parses a DSN string according to the rules in the PHP manual
@@ -30,26 +32,27 @@ class Pdo_Util
     {
         if (strpos($dsn, ':') !== false) {
             $driver = substr($dsn, 0, strpos($dsn, ':'));
-            $vars = substr($dsn, strpos($dsn, ':') + 1);
+            $vars   = substr($dsn, strpos($dsn, ':') + 1);
 
             if ($driver == 'uri') {
                 return self::parseDsn(file_get_contents($vars), $params);
             } else {
-                $returnParams = array();
+                $returnParams = [];
                 foreach (explode(';', $vars) as $var) {
                     $param = explode('=', $var);
                     if (in_array($param[0], $params)) {
                         $returnParams[$param[0]] = $param[1];
                     }
                 }
+
                 return $returnParams;
             }
-        } else if (strlen(trim($dsn)) > 0) {
+        } elseif (strlen(trim($dsn)) > 0) {
             // The DSN passed in must be an alias set in php.ini
             return self::parseDsn(self::iniGet("pdo.dsn.{$dsn}"), $params);
         }
 
-        return array();
+        return [];
     }
 
     /**

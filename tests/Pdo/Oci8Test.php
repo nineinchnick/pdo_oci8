@@ -44,7 +44,7 @@ class Pdo_Oci8Test extends PHPUnit_Framework_TestCase
      */
     protected function setUp()
     {
-        $this->_dsn = 'oci:dbname=//localhost:1521/xe;charset=AL32UTF8';
+        $this->_dsn      = 'oci:dbname=//localhost:1521/xe;charset=AL32UTF8';
         $this->_username = 'hr';
         $this->_password = 'hrpwd';
 
@@ -52,7 +52,7 @@ class Pdo_Oci8Test extends PHPUnit_Framework_TestCase
             $this->_dsn,
             $this->_username,
             $this->_password,
-            array(PDO::ATTR_PERSISTENT => true)
+            [PDO::ATTR_PERSISTENT => true]
         );
     }
 
@@ -91,7 +91,7 @@ class Pdo_Oci8Test extends PHPUnit_Framework_TestCase
             $this->_dsn,
             $this->_username,
             $this->_password,
-            array(PDO::ATTR_PERSISTENT => true)
+            [PDO::ATTR_PERSISTENT => true]
         );
 
         $this->assertType('Pdo_Oci8', $pdoOci8);
@@ -301,7 +301,7 @@ class Pdo_Oci8Test extends PHPUnit_Framework_TestCase
     public function testQuote()
     {
         $strToQuote = "O'Reilly";
-        $quotedStr = "'O''Reilly'";
+        $quotedStr  = "'O''Reilly'";
 
         $this->assertEquals(
             $quotedStr,
@@ -309,4 +309,5 @@ class Pdo_Oci8Test extends PHPUnit_Framework_TestCase
         );
     }
 }
+
 ?>

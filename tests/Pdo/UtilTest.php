@@ -35,8 +35,8 @@ class Pdo_UtilTest extends PHPUnit_Framework_TestCase
      */
     public function setUp()
     {
-        $this->_dsn = 'user:driver=Pdo_Oci8;dbname=//localhost:1521/xe;charset=AL32UTF8';
-        $this->_dbname = '//localhost:1521/xe';
+        $this->_dsn     = 'user:driver=Pdo_Oci8;dbname=//localhost:1521/xe;charset=AL32UTF8';
+        $this->_dbname  = '//localhost:1521/xe';
         $this->_charset = 'AL32UTF8';
     }
 
@@ -45,7 +45,7 @@ class Pdo_UtilTest extends PHPUnit_Framework_TestCase
      */
     public function testParseDsnDriverInvocation()
     {
-        $parsedDsn = Pdo_Util::parseDsn($this->_dsn, array('dbname', 'charset'));
+        $parsedDsn = Pdo_Util::parseDsn($this->_dsn, ['dbname', 'charset']);
 
         $this->assertType('array', $parsedDsn);
         $this->assertArrayHasKey('dbname', $parsedDsn);
@@ -61,10 +61,10 @@ class Pdo_UtilTest extends PHPUnit_Framework_TestCase
     {
         // Set up the file
         $tmpFile = tempnam(sys_get_temp_dir(), 'pdo');
-        $dsn = "uri:file://{$tmpFile}";
+        $dsn     = "uri:file://{$tmpFile}";
         file_put_contents($tmpFile, $this->_dsn);
 
-        $parsedDsn = Pdo_Util::parseDsn($dsn, array('dbname', 'charset'));
+        $parsedDsn = Pdo_Util::parseDsn($dsn, ['dbname', 'charset']);
 
         $this->assertType('array', $parsedDsn);
         $this->assertArrayHasKey('dbname', $parsedDsn);
@@ -89,11 +89,11 @@ class Pdo_UtilTest extends PHPUnit_Framework_TestCase
         // Create a stub object for testing ini_get()
         $stub = $this->getMock('Pdo_Util');
         $stub->expects($this->any())
-             ->method('iniGet')
-             ->with($this->equalTo("pdo.dsn.{$dsnAlias}"))
-             ->will($this->returnValue($this->_dsn));
+            ->method('iniGet')
+            ->with($this->equalTo("pdo.dsn.{$dsnAlias}"))
+            ->will($this->returnValue($this->_dsn));
 
-        $parsedDsn = $stub->parseDsn($dsnAlias, array('dbname', 'charset'));
+        $parsedDsn = $stub->parseDsn($dsnAlias, ['dbname', 'charset']);
 
         $this->assertType('array', $parsedDsn);
         $this->assertArrayHasKey('dbname', $parsedDsn);
@@ -102,4 +102,5 @@ class Pdo_UtilTest extends PHPUnit_Framework_TestCase
         $this->assertEquals($this->_charset, $parsedDsn['charset']);
     }
 }
+
 ?>

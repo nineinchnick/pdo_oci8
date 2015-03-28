@@ -2,32 +2,15 @@
 /**
  * PDO Userspace Driver for Oracle (oci8)
  *
- * @category Tests
- * @package Pdo
+ * @category   Tests
+ * @package    Pdo
  * @subpackage Oci8
- * @author Ben Ramsey <ramsey@php.net>
- * @copyright Copyright (c) 2009 Ben Ramsey (http://benramsey.com/)
- * @license http://open.benramsey.com/license/mit  MIT License
+ * @author     Ben Ramsey <ramsey@php.net>
+ * @copyright  Copyright (c) 2009 Ben Ramsey (http://benramsey.com/)
+ * @license    http://open.benramsey.com/license/mit  MIT License
  */
 
-set_include_path(
-    realpath(dirname(__FILE__) . '/../library')
-    . PATH_SEPARATOR
-    . get_include_path()
-);
-
-/**
- * Require the PHPUnit testing framework
- */
-require_once 'PHPUnit/Framework.php';
-
-/**#@+
- * Require the test classes
- */
-require_once 'Pdo/UtilTest.php';
-require_once 'Pdo/Oci8Test.php';
-require_once 'Pdo/Oci8/StatementTest.php';
-/**#@-*/
+namespace nineinchnick\pdo\tests;
 
 class AllTests
 {
@@ -38,7 +21,7 @@ class AllTests
      */
     public static function suite()
     {
-        $suite = new PHPUnit_Framework_TestSuite(
+        $suite = new \PHPUnit_Framework_TestSuite(
             'PDO Userspace Driver for Oracle (oci8)');
 
         $suite->addTestSuite('Pdo_UtilTest');
