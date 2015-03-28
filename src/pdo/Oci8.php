@@ -25,6 +25,11 @@ use PDOException;
  */
 class Oci8 extends PDO
 {
+    const PARAM_BLOB = OCI_B_BLOB;
+    const PARAM_CLOB = OCI_B_CLOB;
+    const LOB_SQL    = 0;
+    const LOB_PL_SQL = 1;
+
     /**
      * @var resource Database handler
      */
@@ -37,6 +42,7 @@ class Oci8 extends PDO
         PDO::ATTR_AUTOCOMMIT => true,
         PDO::ATTR_CASE => PDO::CASE_NATURAL,
         PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_BOTH,
+        PDO::ATTR_DRIVER_NAME => 'oci',
         PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
     ];
 
@@ -65,25 +71,23 @@ class Oci8 extends PDO
         $this->options = array_merge($this->options, $options);
 
         if (isset($options[PDO::ATTR_PERSISTENT]) && $options[PDO::ATTR_PERSISTENT]) {
-            $this->dbh = oci_pconnect(
-                $username,
-                $password,
-                $parsedDsn['dbname'],
-                $parsedDsn['charset']
-            );
+            $this->dbh = oci_pconnect($username, $password, $parsedDsn['dbname'], $parsedDsn['charset']);
         } else {
-            $this->dbh = oci_connect(
-                $username,
-                $password,
-                $parsedDsn['dbname'],
-                $parsedDsn['charset']
-            );
-
+            $this->dbh = oci_connect($username, $password, $parsedDsn['dbname'], $parsedDsn['charset']);
         }
 
-        if (!$this->dbh) {
+        if ($this->dbh === false) {
             $this->handleError($this->error = oci_error());
         }
+    }
+
+    /**
+     * Returns current connection handler.
+     * @return resource
+     */
+    public function getConnectionHandler()
+    {
+        return $this->dbh;
     }
 
     /**
@@ -93,16 +97,13 @@ class Oci8 extends PDO
      * @param array $options
      * @return Oci8\Statement
      */
-    public function prepare($statement, $options = null)
+    public function prepare($statement, array $options = [])
     {
         $sth = oci_parse($this->dbh, $statement);
 
-        if (!$sth) {
+        if ($sth === false) {
             $this->handleError($this->error = oci_error($this->dbh));
-        }
-
-        if (!is_array($options)) {
-            $options = [];
+            return false;
         }
 
         return new Oci8\Statement($sth, $this, $options);
@@ -110,15 +111,23 @@ class Oci8 extends PDO
 
     /**
      * Begins a transaction (turns off autocommit mode)
+     * @return boolean
      */
     public function beginTransaction()
     {
         if ($this->isTransaction()) {
-            throw new PDOException('There is already an active transaction');
+            $this->error = [
+                'code'    => '00000',
+                'message' => 'There is already an active transaction',
+                'offset'  => null,
+                'sqltext' => null,
+            ];
+            $this->handleError($this->error);
+            return null;
         }
 
         $this->isTransaction = true;
-        $this->setAttribute(PDO::ATTR_AUTOCOMMIT, false);
+        return true;
     }
 
     /**
@@ -139,7 +148,14 @@ class Oci8 extends PDO
     public function commit()
     {
         if (!$this->isTransaction()) {
-            throw new PDOException('There is no active transaction');
+            $this->error = [
+                'code'    => '00000',
+                'message' => 'There is no active transaction',
+                'offset'  => null,
+                'sqltext' => null,
+            ];
+            $this->handleError($this->error);
+            return false;
         }
 
         if (oci_commit($this->dbh)) {
@@ -159,11 +175,18 @@ class Oci8 extends PDO
     public function rollBack()
     {
         if (!$this->isTransaction()) {
-            throw new PDOException('There is no active transaction');
+            $this->error = [
+                'code'    => '00000',
+                'message' => 'There is no active transaction',
+                'offset'  => null,
+                'sqltext' => null,
+            ];
+            $this->handleError($this->error);
+            return false;
         }
 
         if (oci_rollback($this->dbh)) {
-            $this->_isTransaction = false;
+            $this->isTransaction = false;
 
             return true;
         }
@@ -174,13 +197,15 @@ class Oci8 extends PDO
     /**
      * Executes an SQL statement and returns the number of affected rows
      *
-     * @param string $query
+     * @param string $statement
      * @return int The number of rows affected
      */
-    public function exec($query)
+    public function exec($statement)
     {
-        $stmt = $this->prepare($query);
-        $stmt->execute();
+        $stmt = $this->prepare($statement);
+        if (!$stmt->execute()) {
+            return false;
+        }
 
         return $stmt->rowCount();
     }
@@ -188,40 +213,45 @@ class Oci8 extends PDO
     /**
      * Executes an SQL statement, returning the results as a Oci8\Statement
      *
-     * @param string $query
-     * @param int $fetchType
-     * @param mixed $typeArg
+     * @param string $statement
+     * @param int $mode
+     * @param mixed $type_arg
      * @param array $ctor_args
      * @return Oci8\Statement
      */
-    public function query($query, $fetchType = null, $typeArg = null, array $ctor_args = [])
+    public function query($statement, $mode = null, $type_arg = null, $ctor_args = [])
     {
-        $stmt = $this->prepare($query);
+        $stmt = $this->prepare($statement);
+        if ($mode !== null) {
+            $stmt->setFetchMode($mode, $type_arg, $ctor_args);
+        }
         $stmt->execute();
 
         return $stmt;
     }
 
     /**
-     * Issues a PHP warning, just as with the PDO_OCI driver
+     * Return the last inserted id
+     * If the sequence name is not sent, throws an exception
      *
-     * Oracle does not support the last inserted ID functionality like MySQL.
-     * You must implement this yourself by returning the sequence ID from a
-     * stored procedure, for example.
-     *
-     * @param string $name Sequence name; no use in this context
-     * @return void
+     * @param string $name Sequence name
+     * @return integer
      */
     public function lastInsertId($name = null)
     {
-        $this->error = [
-            'code' => 'IM001',
-            'message' => 'SQLSTATE[IM001]: Driver does not support this function: '
-                . 'driver does not support lastInsertId()',
-            'offset' => null,
-            'sqltext' => null,
-        ];
-        $this->handleError($this->error);
+        if ($name === null) {
+            $this->error = [
+                'code'    => 'IM001',
+                'message' => 'SQLSTATE[IM001]: Driver does not support this function: '
+                    . 'driver does not support lastInsertId()',
+                'offset'  => null,
+                'sqltext' => null,
+            ];
+            $this->handleError($this->error);
+            return null;
+        }
+        $row = $this->query("SELECT $name.CURRVAL FROM DUAL")->fetch(\PDO::FETCH_ASSOC);
+        return $row["CURRVAL"];
     }
 
     /**
@@ -309,11 +339,57 @@ class Oci8 extends PDO
      * Quotes a string for use in a query
      *
      * @param string $string
-     * @param int $paramType
+     * @param int $parameter_type
      * @return string
      */
-    public function quote($string, $paramType = PDO::PARAM_STR)
+    public function quote($string, $parameter_type = PDO::PARAM_STR)
     {
         return "'" . str_replace("'", "''", $string) . "'";
+    }
+
+    /**
+     * Special non PDO function used to start cursors in the database
+     * Remember to call oci_free_statement() on your cursor.
+     *
+     * @return resource New statement handle, or FALSE on error.
+     */
+    public function getNewCursor()
+    {
+        return oci_new_cursor($this->dbh);
+    }
+
+    /**
+     * Special non PDO function used to create a new descriptor.
+     *
+     * @param int $type One of OCI_DTYPE_FILE, OCI_DTYPE_LOB or OCI_DTYPE_ROWID.
+     * @return mixed New LOB or FILE descriptor on success, FALSE on error.
+     */
+    public function getNewDescriptor($type = OCI_D_LOB)
+    {
+        return oci_new_descriptor($this->dbh, $type);
+    }
+
+    /**
+     * Special non PDO function used to allocate a new collection object.
+     *
+     * @param string $tdo    Should be a valid named type (uppercase).
+     * @param string $schema Should point to the scheme, where the named type was created.
+     *                       The name of the current user is the default value.
+     * @return mixed New collection on success, FALSE on error.
+     */
+    public function getNewCollection($tdo, $schema = null)
+    {
+        return oci_new_collection($this->dbh, $tdo, $schema);
+    }
+
+    /**
+     * Special non PDO function used to close an open cursor in the database
+     *
+     * @param mixed $cursor A valid OCI statement identifier.
+     * @return boolean
+     */
+    public function closeCursor($cursor)
+    {
+        return oci_free_statement($cursor);
     }
 }

@@ -27,23 +27,17 @@ use PDOStatement;
 class Statement extends PDOStatement
 {
     /**
-     * Statement handler
-     *
-     * @var resource
+     * @var resource Statement handler
      */
     protected $sth;
 
     /**
-     * PDO Oci8 driver
-     *
-     * @var Pdo_Oci8
+     * @var Oci8 PDO Oci8 driver
      */
     protected $pdoOci8;
 
     /**
-     * Statement options
-     *
-     * @var array
+     * @var array Statement options
      */
     protected $options = [];
 
@@ -53,15 +47,56 @@ class Statement extends PDOStatement
     protected $error = false;
 
     /**
-     * Default fetch mode for this statement
-     * @var integer
+     * @var integer Default fetch mode for this statement
      */
     protected $fetchMode = null;
 
     /**
-     * Bound columns for bindColumn()
+     * @var integer Column number for PDO::FETCH_COLUMN fetch mode
+     */
+    protected $fetchColumnNumber = 0;
+
+    /**
+     * @var string Class name for PDO::FETCH_CLASS fetch mode
+     */
+    protected $fetchClassName = '\stdClass';
+
+    /**
+     * @var array Constructor arguments for PDO::FETCH_CLASS
+     */
+    protected $fetchCtorArgs = [];
+
+    /**
+     * @var object Object reference for PDO::FETCH_INTO fetch mode
+     */
+    protected $fetchIntoObject = null;
+
+    /**
+     * @var array Bound columns for bindColumn()
      */
     protected $boundColumns = [];
+
+    /**
+     * @var boolean should LOB be converted to string when reading results
+     */
+    protected $returnLobs = true;
+
+    /**
+     * @var Lob[] Lob object, when need lob->save after oci_execute.
+     */
+    protected $saveLobs = [];
+
+    /**
+     * @var Lob[] Lob object, when need lob->write after oci_bind_by_name.
+     */
+    protected $writeLobs = [];
+
+    /**
+     * Array of param value, which binded in bindParam as lob.
+     *
+     * @var array
+     */
+    protected $lobsValue = [];
 
     /**
      * Constructor
@@ -91,7 +126,8 @@ class Statement extends PDOStatement
     public function execute($inputParams = null)
     {
         $mode = OCI_COMMIT_ON_SUCCESS;
-        if (!$this->pdoOci8->getAttribute(PDO::ATTR_AUTOCOMMIT) || $this->pdoOci8->isTransaction()) {
+        if (!$this->pdoOci8->getAttribute(PDO::ATTR_AUTOCOMMIT) || $this->pdoOci8->isTransaction()
+            || count($this->saveLobs) > 0 || count($this->writeLobs) > 0) {
             if (PHP_VERSION_ID > 503020) {
                 $mode = OCI_NO_AUTO_COMMIT;
             } else {
@@ -109,8 +145,27 @@ class Statement extends PDOStatement
             }
         }
 
+        if (count($this->writeLobs) > 0) {
+            /* @var $lob Lob */
+            foreach ($this->writeLobs as $lobName => $lob) {
+                $type = $lob->type == Oci8::PARAM_BLOB ? OCI_TEMP_BLOB : OCI_TEMP_CLOB;
+                $lob->object->writetemporary($this->lobsValue[$lobName], $type);
+            }
+        }
+
         if (!oci_execute($this->sth, $mode)) {
-            $this->pdoOci8->handleError($this->error = oci_error($this->dbh));
+            $this->pdoOci8->handleError($this->error = oci_error($this->sth));
+            return false;
+        }
+
+        if (count($this->saveLobs) > 0) {
+            foreach ($this->saveLobs as $lobName => $lob) {
+                $lob->object->save($this->lobsValue[$lobName]);
+            }
+        }
+
+        if (!$this->pdoOci8->inTransaction() && (count($this->saveLobs) > 0 || count($this->writeLobs) > 0)) {
+            return oci_commit($this->pdoOci8->getConnectionHandler());
         }
 
         return true;
@@ -124,39 +179,88 @@ class Statement extends PDOStatement
      * @param int $cursor_offset
      * @return mixed
      */
-    public function fetch($fetch_style = PDO::FETCH_BOTH, $cursor_orientation = PDO::FETCH_ORI_NEXT, $cursor_offset = 0)
+    public function fetch($fetch_style = null, $cursor_orientation = PDO::FETCH_ORI_NEXT, $cursor_offset = 0)
     {
         if ($cursor_orientation !== PDO::FETCH_ORI_NEXT || $cursor_offset !== 0) {
             throw new PDOException('$cursor_orientation that is not PDO::FETCH_ORI_NEXT '
                 . 'is not implemented for Oci8PDO_Statement::fetch()');
         }
 
-        if ($this->fetchMode !== null) {
-            $fetch_style = $this->fetchMode;
+        if ($fetch_style === null) {
+            if ($this->fetchMode !== null) {
+                $fetch_style = $this->fetchMode;
+            } else {
+                $fetch_style = $this->pdoOci8->getAttribute(PDO::ATTR_DEFAULT_FETCH_MODE);
+            }
         }
 
-        if ($fetch_style === PDO::FETCH_ASSOC || $fetch_style === PDO::FETCH_BOTH) {
-            $result = oci_fetch_array(
-                $this->sth,
-                ($fetch_style === PDO::FETCH_BOTH ? OCI_BOTH : OCI_ASSOC) + OCI_RETURN_NULLS
-            );
-            if ($result !== false && ($case = $this->pdoOci8->getAttribute(PDO::ATTR_CASE)) != PDO::CASE_NATURAL) {
-                $result = array_change_key_case($result, $case == PDO::CASE_LOWER ? CASE_LOWER : CASE_UPPER);
-            }
-        } elseif ($fetch_style === PDO::FETCH_NUM) {
-            $result = oci_fetch_array($this->sth, OCI_NUM + OCI_RETURN_NULLS);
-        } elseif ($fetch_style === PDO::FETCH_BOUND) {
-            throw new PDOException('PDO::FETCH_BOUND is not implemented for Oci8PDO_Statement::fetch()');
-        } elseif ($fetch_style === PDO::FETCH_CLASS) {
-            throw new PDOException('PDO::FETCH_CLASS is not implemented for Oci8PDO_Statement::fetch()');
-        } elseif ($fetch_style === PDO::FETCH_INTO) {
-            throw new PDOException('PDO::FETCH_INTO is not implemented for Oci8PDO_Statement::fetch()');
-        } elseif ($fetch_style === PDO::FETCH_LAZY) {
-            throw new PDOException('PDO::FETCH_LAZY is not implemented for Oci8PDO_Statement::fetch()');
-        } elseif ($fetch_style === PDO::FETCH_OBJ) {
-            $result = oci_fetch_object($this->sth);
-        } else {
-            throw new PDOException('This $fetch_style combination is not implemented for Oci8PDO_Statement::fetch()');
+        if ($this->getAttribute(PDO::ATTR_ORACLE_NULLS) !== PDO::NULL_NATURAL) {
+            throw new PDOException('Oci8\Statement does not support '
+                . 'PDO::ATTR_ORACLE_NULLS other than PDO::NULL_NATURAL');
+        }
+
+        switch ($fetch_style) {
+            case PDO::FETCH_ASSOC:
+            case PDO::FETCH_BOTH:
+                $result = oci_fetch_array(
+                    $this->sth,
+                    ($fetch_style === PDO::FETCH_BOTH ? OCI_BOTH : OCI_ASSOC) + OCI_RETURN_NULLS
+                );
+                if ($result === false) {
+                    break;
+                }
+                if (($case = $this->pdoOci8->getAttribute(PDO::ATTR_CASE)) != PDO::CASE_NATURAL) {
+                    $result = array_change_key_case($result, $case == PDO::CASE_LOWER ? CASE_LOWER : CASE_UPPER);
+                }
+                break;
+            case PDO::FETCH_NUM:
+                $result = oci_fetch_array($this->sth, OCI_NUM + OCI_RETURN_NULLS);
+                break;
+            case PDO::FETCH_COLUMN:
+                $result = oci_fetch_row($this->sth);
+                if (is_array($result) && array_key_exists($this->fetchColumnNumber, $result)) {
+                    $result = $result[$this->fetchColumnNumber];
+                }
+                break;
+            case PDO::FETCH_OBJ:
+                if (($case = $this->pdoOci8->getAttribute(PDO::ATTR_CASE)) != PDO::CASE_NATURAL) {
+                    throw new PDOException('Oci8\Statement does not support fetching objects with '
+                        . 'PDO::ATTR_CASE not set to PDO::CASE_NATURAL');
+                }
+                $result = oci_fetch_object($this->sth);
+                break;
+            case PDO::FETCH_INTO:
+            case PDO::FETCH_CLASS:
+            case PDO::FETCH_CLASS | PDO::FETCH_PROPS_LATE:
+                $result = oci_fetch_assoc($this->sth);
+                if ($result === false) {
+                    break;
+                }
+                if (($case = $this->pdoOci8->getAttribute(PDO::ATTR_CASE)) != PDO::CASE_NATURAL) {
+                    $result = array_change_key_case($result, $case == PDO::CASE_LOWER ? CASE_LOWER : CASE_UPPER);
+                }
+
+                if ($fetch_style === PDO::FETCH_INTO) {
+                    $object = $this->fetchIntoObject;
+                } elseif ($fetch_style === PDO::FETCH_OBJ) {
+                    $object = new \stdClass();
+                } elseif ($this->fetchCtorArgs) {
+                    $reflectionClass = new \ReflectionClass($this->fetchClassName);
+                    $object          = $reflectionClass->newInstanceArgs($this->fetchCtorArgs);
+                } else {
+                    $object = new $this->fetchClassName();
+                }
+
+                foreach ($result as $field => $value) {
+                    $object->$field = $value;
+                }
+
+                return $object;
+            default:
+            case PDO::FETCH_BOUND:
+            case PDO::FETCH_LAZY:
+                throw new PDOException('Oci8\Statement::fetch does not implement fetch mode ' . $fetch_style);
+                break;
         }
 
         $this->bindToColumn($result);
@@ -171,25 +275,61 @@ class Statement extends PDOStatement
      * @param mixed $variable
      * @param int $data_type
      * @param int $length
-     * @param array $options
+     * @param array $driver_options
      * @return bool
      */
-    public function bindParam($parameter, &$variable, $data_type = PDO::PARAM_STR, $length = -1, $options = null)
+    public function bindParam($parameter, &$variable, $data_type = PDO::PARAM_STR, $length = -1, $driver_options = null)
     {
-        if ($options !== null) {
-            throw new PDOException('$driver_options is not implemented for Oci8PDO_Statement::bindParam()');
+        if (is_numeric($parameter)) {
+            throw new PDOException('Oci8\Statement::bindParam() does not implement binding numerical params.');
         }
         if (is_array($variable)) {
-            return oci_bind_array_by_name($this->sth, $parameter, $variable, count($variable), $length);
+            return oci_bind_array_by_name($this->sth, $parameter, $variable, count($variable), $length, $data_type);
         }
         if ($data_type === PDO::PARAM_LOB) {
-            return oci_bind_by_name($this->sth, $parameter, $variable, $length, OCI_B_BLOB);
+            $data_type = Oci8::PARAM_BLOB;
         }
         if ($length == -1) {
             $length = strlen((string)$variable);
         }
+        switch ($data_type) {
+            case PDO::PARAM_BOOL:
+                $oci_type = SQLT_INT;
+                break;
+            case PDO::PARAM_NULL:
+                $oci_type = SQLT_CHR;
+                break;
+            case PDO::PARAM_INT:
+                $oci_type = SQLT_INT;
+                break;
+            case PDO::PARAM_STR:
+                $oci_type = SQLT_CHR;
+                break;
+            case Oci8::PARAM_BLOB:
+            case Oci8::PARAM_CLOB:
+                $oci_type = $data_type;
 
-        return oci_bind_by_name($this->sth, $parameter, $variable, $length);
+                $this->lobsValue[$parameter] = $variable;
+                $variable = $this->pdoOci8->getNewDescriptor(OCI_D_LOB);
+
+                if (in_array(Oci8::LOB_SQL, $driver_options)) {
+                    $this->saveLobs[$parameter] = new Lob($oci_type, $variable);
+                } elseif (in_array(Oci8::LOB_PL_SQL, $driver_options)) {
+                    $this->writeLobs[$parameter] = new Lob($oci_type, $variable);
+                }
+                break;
+            case PDO::PARAM_STMT:
+                $oci_type = OCI_B_CURSOR;
+                break;
+            case SQLT_NTY:
+                $oci_type = SQLT_NTY;
+                break;
+            default:
+                $oci_type = SQLT_CHR;
+                break;
+        }
+
+        return oci_bind_by_name($this->sth, $parameter, $variable, $length, $oci_type);
     }
 
     /**
@@ -240,16 +380,17 @@ class Statement extends PDOStatement
     }
 
     /**
-     * Binds a value to a parameter
+     * Binds a value to a corresponding named or question mark placeholder in the SQL statement
+     * that was used to prepare the statement.
      *
-     * @param string $parameter
-     * @param mixed $variable
-     * @param int $dataType
+     * @param string $parameter Parameter identifier.
+     * @param mixed $value      The value to bind to the parameter.
+     * @param int $data_type    Explicit data type for the parameter using the PDO::PARAM_* constants.
      * @return bool
      */
-    public function bindValue($parameter, $variable, $dataType = PDO::PARAM_STR)
+    public function bindValue($parameter, $value, $data_type = PDO::PARAM_STR)
     {
-        return $this->bindParam($parameter, $variable, $dataType);
+        return $this->bindParam($parameter, $value, $data_type);
     }
 
     /**
@@ -460,12 +601,12 @@ class Statement extends PDOStatement
     /**
      * Set the default fetch mode for this statement
      *
-     * @param int $fetchType
+     * @param int $mode
      * @param mixed $colClassOrObj
      * @param array $ctor_args
      * @return bool
      */
-    public function setFetchMode($fetchType, $colClassOrObj = null, array $ctor_args = [])
+    public function setFetchMode($mode, $colClassOrObj = null, $ctor_args = [])
     {
         //52: $this->_statement->setFetchMode(PDO::FETCH_ASSOC);
         if ($colClassOrObj !== null || !empty($ctor_args)) {
@@ -473,7 +614,7 @@ class Statement extends PDOStatement
                 . ' are not implemented for Oci8PDO_Statement::setFetchMode()');
             //see http://www.php.net/manual/en/pdostatement.setfetchmode.php
         }
-        $this->fetchMode = $fetchType;
+        $this->fetchMode = $mode;
 
         return true;
     }
@@ -495,7 +636,6 @@ class Statement extends PDOStatement
      */
     public function closeCursor()
     {
-        //Because we use OCI8 functions, we don't need this.
         return oci_free_statement($this->sth);
     }
 
