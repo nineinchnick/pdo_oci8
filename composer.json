@@ -1,0 +1,29 @@
+{
+    "name": "nineinchnick/pdo_oci8",
+    "type": "library",
+    "description": "A PDO userspace driver for the Oracle database using the oci8 PHP module.",
+    "keywords": ["pdo", "oci8", "driver"],
+    "license": "MIT",
+    "authors": [
+        {
+            "name": "Jan Waś",
+            "homepage": "http://niix.pl"
+        },
+        {
+            "name": "Ben Ramsey",
+            "homepage": "http://benramsey.com/"
+        },
+        {
+            "name": "Jeroen den Haan",
+            "homepage": "https://github.com/yjeroen"
+        }
+    ],
+    "require": {
+        "php": ">=5.4.0"
+    },
+    "autoload": {
+        "psr-4": {
+            "nineinchnick\\": "src/"
+        }
+    }
+}

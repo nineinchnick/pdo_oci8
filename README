@@ -1,3 +1,12 @@
-PDO Userspace Driver for Oracle (oci8)
+pdo_oci8
+########
 
-Details coming soon...
+A PDO userspace driver for the Oracle database using the oci8 PHP module.
+
+Based on `ramsey/pdo_oci8` and `yjeroen/oci8Pdo`.
+
+Example usage:
+
+~~~
+$conn = new nineinchnick\pdo\Oci8($dsn, $username, $password, $attributes);
+~~~
