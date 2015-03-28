@@ -74,7 +74,7 @@ class Oci8 extends PDO
             $this->setAttribute($option, $value);
         }
 
-        if ($this->getAttribute(PDO::ATTR_PERSISTENT])) {
+        if ($this->getAttribute(PDO::ATTR_PERSISTENT)) {
             $this->dbh = oci_pconnect($username, $password, $parsedDsn['dbname'], $parsedDsn['charset']);
         } else {
             $this->dbh = oci_connect($username, $password, $parsedDsn['dbname'], $parsedDsn['charset']);
