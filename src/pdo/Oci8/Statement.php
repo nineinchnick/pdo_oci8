@@ -164,7 +164,7 @@ class Statement extends PDOStatement
             }
         }
 
-        if (!$this->pdoOci8->inTransaction() && (count($this->saveLobs) > 0 || count($this->writeLobs) > 0)) {
+        if (!$this->pdoOci8->isTransaction() && (count($this->saveLobs) > 0 || count($this->writeLobs) > 0)) {
             return oci_commit($this->pdoOci8->getConnectionHandler());
         }
 
