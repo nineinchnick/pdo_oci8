@@ -44,6 +44,7 @@ class Oci8 extends PDO
         PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_BOTH,
         PDO::ATTR_DRIVER_NAME => 'oci',
         PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
+        PDO::ATTR_ORACLE_NULLS => PDO::NULL_NATURAL,
     ];
 
     /**

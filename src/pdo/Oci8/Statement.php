@@ -194,7 +194,7 @@ class Statement extends PDOStatement
             }
         }
 
-        if ($this->getAttribute(PDO::ATTR_ORACLE_NULLS) !== PDO::NULL_NATURAL) {
+        if ($this->pdoOci8->getAttribute(PDO::ATTR_ORACLE_NULLS) !== PDO::NULL_NATURAL) {
             throw new PDOException('Oci8\Statement does not support '
                 . 'PDO::ATTR_ORACLE_NULLS other than PDO::NULL_NATURAL');
         }
