@@ -244,7 +244,7 @@ class Statement extends PDOStatement
                     $object = $this->fetchIntoObject;
                 } elseif ($fetch_style === PDO::FETCH_OBJ) {
                     $object = new \stdClass();
-                } elseif ($this->fetchCtorArgs) {
+                } elseif (!empty($this->fetchCtorArgs)) {
                     $reflectionClass = new \ReflectionClass($this->fetchClassName);
                     $object          = $reflectionClass->newInstanceArgs($this->fetchCtorArgs);
                 } else {
@@ -256,9 +256,9 @@ class Statement extends PDOStatement
                 }
 
                 return $object;
-            default:
             case PDO::FETCH_BOUND:
             case PDO::FETCH_LAZY:
+            default:
                 throw new PDOException('Oci8\Statement::fetch does not implement fetch mode ' . $fetch_style);
                 break;
         }
@@ -266,6 +266,120 @@ class Statement extends PDOStatement
         $this->bindToColumn($result);
 
         return $result;
+    }
+
+    /**
+     * Returns an array containing all of the result set rows
+     *
+     * @param int $fetch_style
+     * @param mixed $fetch_argument
+     * @param array $ctor_args
+     * @return mixed
+     */
+    public function fetchAll($fetch_style = null, $fetch_argument = null, $ctor_args = [])
+    {
+        if ($fetch_style === null) {
+            if ($this->fetchMode !== null) {
+                $fetch_style = $this->fetchMode;
+            } else {
+                $fetch_style = $this->pdoOci8->getAttribute(PDO::ATTR_DEFAULT_FETCH_MODE);
+            }
+        }
+        if ($fetch_argument !== null || !empty($ctor_args)) {
+            throw new PDOException('Passing more than one argument to Oci8\Statement::fetchAll() is not supported. '
+                . 'Use Oci8\Statement::setFetchMode().');
+        }
+
+        $result = [];
+        switch($fetch_style) {
+            case PDO::FETCH_ASSOC:
+            case PDO::FETCH_BOTH:
+                oci_fetch_all(
+                    $this->sth,
+                    $result,
+                    0, // skip
+                    -1, // maxrows
+                    OCI_FETCHSTATEMENT_BY_ROW + ($fetch_style === PDO::FETCH_BOTH ? OCI_BOTH : OCI_ASSOC)
+                    + OCI_RETURN_NULLS
+                );
+                if (($case = $this->pdoOci8->getAttribute(PDO::ATTR_CASE)) != PDO::CASE_NATURAL) {
+                    $result = array_map(function ($row) use ($case) {
+                        return array_change_key_case($row, $case == PDO::CASE_LOWER ? CASE_LOWER : CASE_UPPER);
+                    }, $result);
+                }
+                break;
+            case PDO::FETCH_NUM:
+                oci_fetch_all($this->sth, $result, 0, -1, OCI_FETCHSTATEMENT_BY_ROW + OCI_NUM + OCI_RETURN_NULLS);
+                break;
+            case PDO::FETCH_COLUMN:
+                oci_fetch_all($this->sth, $preResult, 0, -1, OCI_FETCHSTATEMENT_BY_COLUMN + OCI_NUM + OCI_RETURN_NULLS);
+                $result = [];
+                foreach ($preResult as $row) {
+                    $result[] = $row[0];
+                }
+                break;
+            case PDO::FETCH_OBJ:
+            case PDO::FETCH_INTO:
+            case PDO::FETCH_CLASS:
+            case PDO::FETCH_CLASS | PDO::FETCH_PROPS_LATE:
+                while (false !== ($row = $this->fetch($fetch_style))) {
+                    $result[] = $row;
+                }
+                break;
+            case PDO::FETCH_BOUND:
+            case PDO::FETCH_LAZY:
+            default:
+                throw new PDOException('Oci8\Statement::fetchAll() does not implement fetch mode ' . $fetch_style);
+                break;
+        }
+
+        return $result;
+    }
+
+    /**
+     * Returns a single column from the next row of a result set
+     *
+     * @param int $column_number
+     * @return string
+     */
+    public function fetchColumn($column_number = 0)
+    {
+        $result = oci_fetch_array($this->sth, OCI_NUM + OCI_RETURN_NULLS);
+
+        if ($result === false || !isset($result[$column_number])) {
+            return false;
+        }
+        return $result[$column_number];
+    }
+
+    /**
+     * Fetches the next row and returns it as an object
+     *
+     * @param string $class_name Name of the created class.
+     * @param array $ctor_args Elements of this array are passed to the constructor.
+     * @return mixed Returns an instance of the required class with property names
+     *               that correspond to the column names or FALSE on failure.
+     */
+    public function fetchObject($class_name = 'stdClass', $ctor_args = null)
+    {
+        if (!empty($ctor_args)) {
+            $reflectionClass = new \ReflectionClass($class_name);
+            $object          = $reflectionClass->newInstanceArgs($ctor_args);
+        } else {
+            $object = new $class_name();
+        }
+        $result = oci_fetch_assoc($this->sth);
+        if ($result === false) {
+            return false;
+        }
+        if (($case = $this->pdoOci8->getAttribute(PDO::ATTR_CASE)) != PDO::CASE_NATURAL) {
+            $result = array_change_key_case($result, $case == PDO::CASE_LOWER ? CASE_LOWER : CASE_UPPER);
+        }
+
+        foreach ($result as $field => $value) {
+            $object->$field = $value;
+        }
+        return $object;
     }
 
     /**
@@ -404,94 +518,6 @@ class Statement extends PDOStatement
     }
 
     /**
-     * Returns a single column from the next row of a result set
-     *
-     * @param int $colNumber
-     * @return string
-     */
-    public function fetchColumn($colNumber = 0)
-    {
-        $result = oci_fetch_array($this->sth, OCI_NUM + OCI_RETURN_NULLS);
-
-        if ($result === false || !isset($result[$colNumber])) {
-            return false;
-        }
-        return $result[$colNumber];
-    }
-
-    /**
-     * Returns an array containing all of the result set rows
-     *
-     * @param int $fetch_style
-     * @param mixed $fetch_argument
-     * @param array $ctor_args
-     * @return mixed
-     */
-    public function fetchAll($fetch_style = PDO::FETCH_BOTH, $fetch_argument = null, $ctor_args = [])
-    {
-        if ($this->fetchMode !== null) {
-            $fetch_style = $this->fetchMode;
-        }
-
-        if ($fetch_style === PDO::FETCH_ASSOC || $fetch_style === PDO::FETCH_BOTH) {
-            oci_fetch_all($this->sth, $result, 0, -1, OCI_FETCHSTATEMENT_BY_ROW + OCI_ASSOC + OCI_RETURN_NULLS);
-            if (($case = $this->pdoOci8->getAttribute(PDO::ATTR_CASE)) != PDO::CASE_NATURAL) {
-                $result = array_map(function ($row) use ($case) {
-                    return array_change_key_case($row, $case == PDO::CASE_LOWER ? CASE_LOWER : CASE_UPPER);
-                }, $result);
-            }
-            if ($fetch_style === PDO::FETCH_BOTH) {
-                $result = array_merge($result, array_values($result));
-            }
-        } elseif ($fetch_style === PDO::FETCH_NUM) {
-            oci_fetch_all($this->sth, $result, 0, -1, OCI_FETCHSTATEMENT_BY_ROW + OCI_NUM + OCI_RETURN_NULLS);
-        } elseif ($fetch_style === PDO::FETCH_COLUMN) {
-            oci_fetch_all($this->sth, $preResult, 0, -1, OCI_FETCHSTATEMENT_BY_COLUMN + OCI_NUM + OCI_RETURN_NULLS);
-            $result = [];
-            foreach ($preResult as $row) {
-                $result[] = $row[0];
-            }
-        } elseif ($fetch_style === PDO::FETCH_BOUND) {
-            throw new PDOException('PDO::FETCH_BOUND is not implemented for Oci8PDO_Statement::fetchAll()');
-        } elseif ($fetch_style === PDO::FETCH_CLASS) {
-            throw new PDOException('PDO::FETCH_CLASS is not implemented for Oci8PDO_Statement::fetchAll()');
-        } elseif ($fetch_style === PDO::FETCH_INTO) {
-            throw new PDOException('PDO::FETCH_INTO is not implemented for Oci8PDO_Statement::fetchAll()');
-        } elseif ($fetch_style === PDO::FETCH_LAZY) {
-            throw new PDOException('PDO::FETCH_LAZY is not implemented for Oci8PDO_Statement::fetchAll()');
-        } elseif ($fetch_style === PDO::FETCH_OBJ) {
-            $result = [];
-            while (false !== ($row = $this->fetch($fetch_style))) {
-                $result[] = $row;
-            }
-        } else {
-            throw new PDOException('This $fetch_style combination is not implemented for Oci8PDO_Statement::fetch()');
-        }
-
-        return $result;
-    }
-
-    /**
-     * Fetches the next row and returns it as an object
-     *
-     * @param string $className
-     * @param array $ctor_args
-     * @return mixed
-     */
-    public function fetchObject($className = 'stdClass', $ctor_args = null)
-    {
-        if ($className == 'stdClass') {
-            return oci_fetch_object($this->sth);
-        }
-        $object     = new $className($ctor_args);
-        $object_oci = oci_fetch_object($this->sth);
-        foreach ($object_oci as $k => $v) {
-            $object->$k = $v;
-        }
-        return $object;
-    }
-
-    /**
      * Returns the error code associated with the last operation
      *
      * While this returns an error code, it merely emulates the action. If
@@ -601,20 +627,39 @@ class Statement extends PDOStatement
     /**
      * Set the default fetch mode for this statement
      *
-     * @param int $mode
-     * @param mixed $colClassOrObj
-     * @param array $ctor_args
-     * @return bool
+     * @param int|null $fetchMode  The fetch mode must be one of the
+     *                             PDO::FETCH_* constants.
+     * @param mixed|null $modeArg  Column number, class name or object.
+     * @param array|null $ctorArgs Constructor arguments.
+     * @throws PDOException
+     * @return bool TRUE on success or FALSE on failure.
      */
-    public function setFetchMode($mode, $colClassOrObj = null, $ctor_args = [])
+    public function setFetchMode($fetchMode, $modeArg = null, array $ctorArgs = [])
     {
-        //52: $this->_statement->setFetchMode(PDO::FETCH_ASSOC);
-        if ($colClassOrObj !== null || !empty($ctor_args)) {
-            throw new PDOException('Second and third parameters'
-                . ' are not implemented for Oci8PDO_Statement::setFetchMode()');
-            //see http://www.php.net/manual/en/pdostatement.setfetchmode.php
+        $this->fetchMode         = $fetchMode;
+        $this->fetchClassName    = '\stdClass';
+        $this->fetchCtorArgs     = [];
+        $this->fetchColumnNumber = 0;
+        $this->fetchIntoObject   = null;
+
+        switch ($fetchMode) {
+            case PDO::FETCH_CLASS:
+            case PDO::FETCH_CLASS | PDO::FETCH_PROPS_LATE:
+                if ($modeArg !== null) {
+                    $this->fetchClassName = $modeArg;
+                }
+                $this->fetchCtorArgs = $ctorArgs;
+                break;
+            case PDO::FETCH_INTO:
+                if (!is_object($modeArg)) {
+                    throw new PDOException('$modeArg must be instance of an object');
+                }
+                $this->fetchIntoObject = $modeArg;
+                break;
+            case PDO::FETCH_COLUMN:
+                $this->fetchColumnNumber = (int)$modeArg;
+                break;
         }
-        $this->fetchMode = $mode;
 
         return true;
     }
