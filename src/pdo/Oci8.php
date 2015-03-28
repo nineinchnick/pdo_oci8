@@ -68,10 +68,13 @@ class Oci8 extends PDO
     public function __construct($dsn, $username = null, $password = null, array $options = [])
     {
         $parsedDsn = Oci8\Util::parseDsn($dsn, ['dbname', 'charset']);
-        $this->options[PDO::ATTR_CLIENT_VERSION] = oci_client_version();
-        $this->options = array_merge($this->options, $options);
+        $this->setAttribute(PDO::ATTR_CLIENT_VERSION, oci_client_version());
+        // can't do a simple array_merge because keys are numeric
+        foreach($options as $option => $value) {
+            $this->setAttribute($option, $value);
+        }
 
-        if (isset($options[PDO::ATTR_PERSISTENT]) && $options[PDO::ATTR_PERSISTENT]) {
+        if ($this->getAttribute(PDO::ATTR_PERSISTENT])) {
             $this->dbh = oci_pconnect($username, $password, $parsedDsn['dbname'], $parsedDsn['charset']);
         } else {
             $this->dbh = oci_connect($username, $password, $parsedDsn['dbname'], $parsedDsn['charset']);
