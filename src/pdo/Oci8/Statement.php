@@ -681,7 +681,7 @@ class Statement extends PDOStatement
      */
     public function closeCursor()
     {
-        return oci_free_statement($this->sth);
+        return true;
     }
 
     /**
