@@ -77,28 +77,6 @@ class Statement extends PDOStatement
     protected $boundColumns = [];
 
     /**
-     * @var boolean should LOB be converted to string when reading results
-     */
-    protected $returnLobs = true;
-
-    /**
-     * @var Lob[] Lob object, when need lob->save after oci_execute.
-     */
-    protected $saveLobs = [];
-
-    /**
-     * @var Lob[] Lob object, when need lob->write after oci_bind_by_name.
-     */
-    protected $writeLobs = [];
-
-    /**
-     * Array of param value, which binded in bindParam as lob.
-     *
-     * @var array
-     */
-    protected $lobsValue = [];
-
-    /**
      * Constructor
      *
      * @param resource $sth  Statement handle created with oci_parse()
@@ -126,8 +104,7 @@ class Statement extends PDOStatement
     public function execute($inputParams = null)
     {
         $mode = OCI_COMMIT_ON_SUCCESS;
-        if (!$this->pdoOci8->getAttribute(PDO::ATTR_AUTOCOMMIT) || $this->pdoOci8->isTransaction()
-            || count($this->saveLobs) > 0 || count($this->writeLobs) > 0) {
+        if (!$this->pdoOci8->getAttribute(PDO::ATTR_AUTOCOMMIT) || $this->pdoOci8->isTransaction()) {
             if (PHP_VERSION_ID > 503020) {
                 $mode = OCI_NO_AUTO_COMMIT;
             } else {
@@ -145,27 +122,9 @@ class Statement extends PDOStatement
             }
         }
 
-        if (count($this->writeLobs) > 0) {
-            /* @var $lob Lob */
-            foreach ($this->writeLobs as $lobName => $lob) {
-                $type = $lob->type == Oci8::PARAM_BLOB ? OCI_TEMP_BLOB : OCI_TEMP_CLOB;
-                $lob->object->writetemporary($this->lobsValue[$lobName], $type);
-            }
-        }
-
         if (!oci_execute($this->sth, $mode)) {
             $this->pdoOci8->handleError($this->error = oci_error($this->sth));
             return false;
-        }
-
-        if (count($this->saveLobs) > 0) {
-            foreach ($this->saveLobs as $lobName => $lob) {
-                $lob->object->save($this->lobsValue[$lobName]);
-            }
-        }
-
-        if (!$this->pdoOci8->isTransaction() && (count($this->saveLobs) > 0 || count($this->writeLobs) > 0)) {
-            return oci_commit($this->pdoOci8->getConnectionHandler());
         }
 
         return true;
@@ -397,14 +356,8 @@ class Statement extends PDOStatement
         if (is_array($variable)) {
             return oci_bind_array_by_name($this->sth, $parameter, $variable, count($variable), $length, $data_type);
         }
-        if ($data_type === PDO::PARAM_LOB) {
-            $data_type = Oci8::PARAM_BLOB;
-        }
         if ($length == -1) {
             $length = strlen((string)$variable);
-        }
-        if ($driver_options === null) {
-            $driver_options = [Oci8::LOB_SQL];
         }
         switch ($data_type) {
             case PDO::PARAM_BOOL:
@@ -425,15 +378,6 @@ class Statement extends PDOStatement
             case Oci8::PARAM_BLOB:
             case Oci8::PARAM_CLOB:
                 $oci_type = $data_type;
-
-                $this->lobsValue[$parameter] = $variable;
-                $variable = $this->pdoOci8->getNewDescriptor(OCI_D_LOB);
-
-                if (in_array(Oci8::LOB_SQL, $driver_options)) {
-                    $this->saveLobs[$parameter] = new Lob($oci_type, $variable);
-                } elseif (in_array(Oci8::LOB_PL_SQL, $driver_options)) {
-                    $this->writeLobs[$parameter] = new Lob($oci_type, $variable);
-                }
                 break;
             case PDO::PARAM_STMT:
                 $oci_type = OCI_B_CURSOR;
