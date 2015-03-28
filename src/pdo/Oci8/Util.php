@@ -39,7 +39,7 @@ class Util
             } else {
                 $returnParams = [];
                 foreach (explode(';', $vars) as $var) {
-                    $param = explode('=', $var);
+                    $param = explode('=', $var, 2);
                     if (in_array($param[0], $params)) {
                         $returnParams[$param[0]] = $param[1];
                     }

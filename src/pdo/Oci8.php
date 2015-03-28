@@ -344,6 +344,9 @@ class Oci8 extends PDO
      */
     public function quote($string, $parameter_type = PDO::PARAM_STR)
     {
+        if($parameter_type !== PDO::PARAM_STR) {
+            throw new PDOException('Only PDO::PARAM_STR is currently implemented for the $parameter_type of Oci8::quote()');
+        }
         return "'" . str_replace("'", "''", $string) . "'";
     }
 
