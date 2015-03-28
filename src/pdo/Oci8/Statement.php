@@ -313,10 +313,7 @@ class Statement extends PDOStatement
                 break;
             case PDO::FETCH_COLUMN:
                 oci_fetch_all($this->sth, $preResult, 0, -1, OCI_FETCHSTATEMENT_BY_COLUMN + OCI_NUM + OCI_RETURN_NULLS);
-                $result = [];
-                foreach ($preResult as $row) {
-                    $result[] = $row[0];
-                }
+                $result = isset($preResult[0]) ? $preResult[0] : false;
                 break;
             case PDO::FETCH_OBJ:
             case PDO::FETCH_INTO:
