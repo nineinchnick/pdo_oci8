@@ -27,6 +27,7 @@ class Oci8 extends PDO
 {
     const PARAM_BLOB = OCI_B_BLOB;
     const PARAM_CLOB = OCI_B_CLOB;
+    const PARAM_NUM  = OCI_B_NUM;
     const LOB_SQL    = 0;
     const LOB_PL_SQL = 1;
 

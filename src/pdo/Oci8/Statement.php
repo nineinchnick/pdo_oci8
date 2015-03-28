@@ -422,6 +422,9 @@ class Statement extends PDOStatement
             case PDO::PARAM_STR:
                 $oci_type = SQLT_CHR;
                 break;
+            case Oci8::PARAM_NUM:
+                $oci_type = SQLT_NUM;
+                break;
             case Oci8::PARAM_BLOB:
             case Oci8::PARAM_CLOB:
                 $oci_type = $data_type;
