@@ -406,6 +406,9 @@ class Statement extends PDOStatement
         if ($length == -1) {
             $length = strlen((string)$variable);
         }
+        if ($driver_options === null) {
+            $driver_options = [Oci8::LOB_SQL];
+        }
         switch ($data_type) {
             case PDO::PARAM_BOOL:
                 $oci_type = SQLT_INT;
