@@ -97,13 +97,17 @@ class Oci8 extends PDO
      * @param array $options
      * @return Oci8\Statement
      */
-    public function prepare($statement, array $options = [])
+    public function prepare($statement, $options = [])
     {
         $sth = oci_parse($this->dbh, $statement);
 
         if ($sth === false) {
             $this->handleError($this->error = oci_error($this->dbh));
             return false;
+        }
+
+        if (!is_array($options)) {
+            $options = [];
         }
 
         return new Oci8\Statement($sth, $this, $options);
